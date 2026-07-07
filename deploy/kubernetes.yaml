@@ -1,0 +1,124 @@
+# Reference Kubernetes deployment for WhisperLite serving.
+#
+# Prerequisites:
+#   * a container registry hosting the image built from the repo Dockerfile
+#   * a PersistentVolume (or initContainer download) providing the checkpoint
+#   * a Secret named `whisperlite-keys` with key API_KEYS (comma-separated)
+#
+# TLS termination and global rate limiting belong on the Ingress / API
+# gateway in front of this Service (see docs/security.md).
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whisperlite
+  labels:
+    app: whisperlite
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: whisperlite
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: whisperlite
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: /metrics
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: whisperlite
+          image: ghcr.io/example/whisperlite:1.0.0 # pin a digest in production
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: WHISPERLITE_CHECKPOINT
+              value: /models/model.pt
+            - name: WHISPERLITE_API_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: whisperlite-keys
+                  key: API_KEYS
+            - name: WHISPERLITE_MAX_CONCURRENCY
+              value: "2"
+            - name: WHISPERLITE_LOG_JSON
+              value: "1"
+          volumeMounts:
+            - name: model
+              mountPath: /models
+              readOnly: true
+          resources:
+            requests:
+              cpu: "2"
+              memory: 2Gi
+            limits:
+              cpu: "4"
+              memory: 4Gi
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 15
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: model
+          persistentVolumeClaim:
+            claimName: whisperlite-model
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whisperlite
+  labels:
+    app: whisperlite
+spec:
+  selector:
+    app: whisperlite
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: whisperlite
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: whisperlite
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
