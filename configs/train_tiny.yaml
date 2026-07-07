@@ -1,0 +1,54 @@
+# Training config: "tiny" model (~37M params) on a LibriSpeech-style corpus.
+# Produce the manifests with scripts/prepare_librispeech.py, then:
+#
+#   whisperlite tokenizer train --manifest data/manifests/train.jsonl \
+#       --vocab-size 8192 --output artifacts/tokenizer.json
+#   whisperlite train --config configs/train_tiny.yaml
+
+output_dir: runs/tiny
+tokenizer_path: artifacts/tokenizer.json
+seed: 42
+
+data:
+  train_manifest: data/manifests/train.jsonl
+  val_manifest: data/manifests/dev.jsonl
+  batch_size: 32
+  num_workers: 4
+  max_text_tokens: 220
+  augment:
+    enabled: true
+    freq_masks: 2
+    freq_width: 27
+    time_masks: 2
+    time_ratio: 0.05
+
+audio:
+  sample_rate: 16000
+  n_fft: 400
+  hop_length: 160
+  n_mels: 80
+  chunk_length: 30.0
+
+model_preset: tiny
+model_overrides:
+  dropout: 0.1
+
+optim:
+  lr: 1.5e-3
+  weight_decay: 0.01
+  betas: [0.9, 0.98]
+  eps: 1.0e-8
+  warmup_steps: 2000
+  scheduler: cosine
+  min_lr_ratio: 0.05
+  clip_norm: 1.0
+
+max_steps: 80000
+grad_accum: 2
+amp: auto
+device: auto
+log_interval: 50
+eval_interval: 2000
+eval_max_batches: 50
+save_interval: 2000
+keep_checkpoints: 3
