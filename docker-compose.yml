@@ -1,0 +1,36 @@
+# Local/staging serving stack.
+#
+#   cp .env.example .env         # set WHISPERLITE_API_KEYS etc.
+#   mkdir -p models && cp runs/tiny/checkpoints/best.pt models/model.pt
+#   docker compose up --build
+
+services:
+  whisperlite:
+    build: .
+    image: whisperlite:latest
+    env_file: .env
+    environment:
+      WHISPERLITE_CHECKPOINT: /models/model.pt
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/models:ro
+    restart: unless-stopped
+    # Bound the container so a runaway request cannot take down the host.
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 4g
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4).status == 200 else 1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
