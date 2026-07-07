@@ -1,0 +1,405 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "WhisperLite API",
+    "description": "Speech-to-text API backed by a from-scratch Whisper-style model. Authenticate with `Authorization: Bearer <api-key>`.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/healthz": {
+      "get": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "Liveness probe",
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "Readiness probe",
+        "operationId": "readyz_readyz_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "Prometheus metrics",
+        "description": "Expose only on an internal network; see docs/security.md.",
+        "operationId": "prometheus_metrics_metrics_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/audio/transcriptions": {
+      "post": {
+        "tags": [
+          "transcription"
+        ],
+        "summary": "Transcribe an audio file",
+        "description": "Upload one audio file and receive its transcript.\n\nLong recordings are transcribed in fixed windows (see ``chunks`` in the\nresponse). ``temperature`` and ``beam_size`` override the server defaults\nwithin safe bounds; beam search requires ``temperature`` to be 0.",
+        "operationId": "create_transcription_v1_audio_transcriptions_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_transcription_v1_audio_transcriptions_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Undecodable or empty audio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Upload or audio duration too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid decoding parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/models": {
+      "get": {
+        "tags": [
+          "transcription"
+        ],
+        "summary": "Describe the loaded model",
+        "operationId": "get_model_info_v1_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelInfoResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_create_transcription_v1_audio_transcriptions_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File",
+            "description": "Audio file (wav, flac, ogg, ...)"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 2.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature",
+            "description": "Sampling temperature; 0 = deterministic"
+          },
+          "beam_size": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 8.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Beam Size",
+            "description": "Beam width; 1 = greedy decoding"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_create_transcription_v1_audio_transcriptions_post"
+      },
+      "ChunkSchema": {
+        "properties": {
+          "start": {
+            "type": "number",
+            "title": "Start",
+            "description": "Chunk start time in seconds"
+          },
+          "end": {
+            "type": "number",
+            "title": "End",
+            "description": "Chunk end time in seconds"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Transcribed text for this chunk"
+          },
+          "avg_logprob": {
+            "type": "number",
+            "title": "Avg Logprob",
+            "description": "Mean token log-probability; low values indicate low confidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "text",
+          "avg_logprob"
+        ],
+        "title": "ChunkSchema",
+        "description": "Transcription of one fixed-length audio window."
+      },
+      "ErrorDetail": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Stable machine-readable error code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable explanation"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorDetail"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "title": "ErrorResponse",
+        "description": "Uniform error envelope returned for all non-2xx responses."
+      },
+      "ModelInfoResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "parameters": {
+            "type": "integer",
+            "title": "Parameters"
+          },
+          "checkpoint_step": {
+            "type": "integer",
+            "title": "Checkpoint Step"
+          },
+          "vocab_size": {
+            "type": "integer",
+            "title": "Vocab Size"
+          },
+          "sample_rate": {
+            "type": "integer",
+            "title": "Sample Rate"
+          },
+          "chunk_length": {
+            "type": "number",
+            "title": "Chunk Length"
+          },
+          "device": {
+            "type": "string",
+            "title": "Device"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "parameters",
+          "checkpoint_step",
+          "vocab_size",
+          "sample_rate",
+          "chunk_length",
+          "device"
+        ],
+        "title": "ModelInfoResponse",
+        "description": "Metadata about the loaded model."
+      },
+      "TranscriptionResponse": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Full transcript of the uploaded audio"
+          },
+          "duration": {
+            "type": "number",
+            "title": "Duration",
+            "description": "Decoded audio duration in seconds"
+          },
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/ChunkSchema"
+            },
+            "type": "array",
+            "title": "Chunks",
+            "description": "Per-window transcription details"
+          },
+          "request_id": {
+            "type": "string",
+            "title": "Request Id",
+            "description": "Server-assigned request identifier"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "duration",
+          "chunks",
+          "request_id"
+        ],
+        "title": "TranscriptionResponse",
+        "description": "Successful transcription result.",
+        "examples": [
+          {
+            "chunks": [
+              {
+                "avg_logprob": -0.21,
+                "end": 2.4,
+                "start": 0.0,
+                "text": "hello world"
+              }
+            ],
+            "duration": 2.4,
+            "request_id": "9f2b1c0a4d6e8f01",
+            "text": "hello world"
+          }
+        ]
+      }
+    }
+  }
+}
